@@ -1,0 +1,105 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```sh
+bun dev          # start dev server on :3000 (auto-provisions Neon DB, runs init.sql, seeds admin)
+bun build        # production build (client + SSR/Cloudflare Worker)
+bun deploy       # build + wrangler deploy to Cloudflare Workers
+
+bun check        # Biome lint + format check (CI gate)
+bun lint         # Biome lint only
+bun format       # Biome format only
+
+bun test         # Vitest (run all)
+
+bun db:push      # Drizzle Kit — sync schema to DB (production setup)
+bun db:seed      # create initial admin user from ADMIN_EMAIL / ADMIN_PASSWORD env vars
+bun db:studio    # Drizzle Studio
+bun db:generate  # generate migration files
+```
+
+Biome uses **tabs** for indentation and **double quotes** for JS strings. It only lints/formats `src/` and `vite.config.ts` — `src/routeTree.gen.ts` and `src/styles.css` are excluded.
+
+## Architecture
+
+### Request flow
+
+```
+Browser → Cloudflare Worker (src/worker.ts)
+             ├── TanStack Start handler  →  SSR routes + server functions
+             └── BroadcastRoom DO        →  WebSocket connections
+```
+
+`src/worker.ts` is the Worker entry point. It re-exports TanStack Start's default handler **and** exports `BroadcastRoom` — both must live in the same module for Cloudflare to find the Durable Object class.
+
+### WebSocket — dev vs production
+
+`@cloudflare/vite-plugin` does **not** forward HTTP upgrade requests to the miniflare Worker in dev mode, so the Durable Object cannot accept WebSocket connections during `bun dev`.
+
+`vite.config.ts` includes a `devBroadcast()` plugin (apply: `'serve'`) that:
+- Intercepts WebSocket upgrades at `/api/ws` directly in the Vite httpServer `upgrade` event using the `ws` package
+- Exposes `POST /__dev/broadcast` as a Vite middleware
+
+The `broadcast` server function in `src/routes/admin.tsx` branches on `import.meta.env.DEV`:
+- **Dev** → `fetch('http://localhost:3000/__dev/broadcast', ...)`
+- **Prod** → calls the Durable Object stub's `/broadcast` endpoint
+
+### Real-time broadcasting
+
+`src/durable-objects/broadcast.ts` — `BroadcastRoom` extends `DurableObject`. It manages all active WebSocket connections using the hibernatable WebSockets API (`ctx.acceptWebSocket`). Two internal routes:
+- `POST /broadcast` — called by the admin server function; iterates `ctx.getWebSockets()` and sends to all
+- `GET /connect` — upgrades the HTTP connection to WebSocket
+
+`src/routes/api/ws.ts` — the public `/api/ws` endpoint. Gets the `BROADCAST` namespace from `cloudflare:workers` env, resolves the single shared DO instance (`idFromName('main')`), and forwards the upgrade request.
+
+### Database
+
+**Schema:** `src/db/schema.ts` — Drizzle + `drizzle-orm/pg-core`. Defines Better Auth's required tables (`users`, `sessions`, `accounts`, `verifications`) plus `broadcastMessages`.
+
+**Client:** `src/db/index.ts` — exports `db` (Drizzle instance) and `schema`. Also exports `getClient()` (raw neon tagged-template function) for the legacy demo route. Both are `null`/`undefined` safe when `DATABASE_URL` is absent.
+
+**Dev seeding:** `db/init.sql` is run by `vite-plugin-neon-new` each time it provisions a fresh Neon database. It creates all tables and inserts the default admin user (`admin@example.com` / `admin1234`).
+
+**Production setup:** `bun db:push` (schema) → `bun db:seed` (admin user). The seed script (`scripts/seed-admin.ts`) is idempotent.
+
+### Auth
+
+`src/lib/auth.ts` — Better Auth with `emailAndPassword` (no OTP), wired to Drizzle via `drizzleAdapter`. Uses `tanstackStartCookies()` plugin for cookie handling in SSR.
+
+`src/lib/auth-client.ts` — browser-side `createAuthClient()`. Use `authClient.signIn.email`, `authClient.signUp.email`, `authClient.signOut`, `authClient.useSession`.
+
+Server-side session check pattern used in server functions:
+```ts
+import { getRequest } from '@tanstack/react-start/server'
+const session = await auth.api.getSession({ headers: getRequest().headers })
+```
+
+### Admin access
+
+Controlled by the `ADMIN_EMAIL` env var (checked in the `broadcast` server function and loader in `src/routes/admin.tsx`). There is no role column — any authenticated user whose email matches `ADMIN_EMAIL` is admin.
+
+### Route structure
+
+| Path | File | Notes |
+|---|---|---|
+| `/` | `src/routes/index.tsx` | Static landing page |
+| `/feed` | `src/routes/feed.tsx` | Live WebSocket feed + DB history |
+| `/admin` | `src/routes/admin.tsx` | Broadcast center; redirects to `/auth/login` if unauthenticated |
+| `/auth/login` | `src/routes/auth/login.tsx` | Email + password sign-in |
+| `/auth/register` | `src/routes/auth/register.tsx` | Sign-up |
+| `/auth` | `src/routes/auth/index.tsx` | Redirects to `/auth/login` |
+| `/api/ws` | `src/routes/api/ws.ts` | WebSocket upgrade (API route, not a page) |
+| `/api/auth/*` | `src/routes/api/auth/$.ts` | Better Auth HTTP handler |
+
+Route tree is auto-generated by TanStack Router into `src/routeTree.gen.ts` — never edit this file.
+
+### Server functions
+
+Use `createServerFn` from `@tanstack/react-start`. Validator method is `.inputValidator()` (not `.validator()`). Access Cloudflare bindings via `import { env } from 'cloudflare:workers'` typed as `CloudflareEnv`.
+
+### Styling
+
+Tailwind CSS v4 + shadcn UI components in `src/components/ui/`. The design uses CSS custom properties (`--sea-ink`, `--sea-ink-soft`, `--lagoon-deep`, `--line`, `--chip-bg`, `--chip-line`, `--header-bg`, `--link-bg-hover`) defined in `src/styles.css`. Reusable layout classes: `page-wrap`, `island-shell`, `island-kicker`, `display-title`, `rise-in`, `nav-link`.

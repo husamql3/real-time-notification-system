@@ -1,0 +1,22 @@
+{
+  "projectName": "real-time-notification-system",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": true,
+  "packageManager": "bun",
+  "git": true,
+  "install": true,
+  "addOnOptions": {},
+  "includeExamples": true,
+  "envVarValues": {},
+  "routerOnly": false,
+  "version": 1,
+  "framework": "react",
+  "chosenAddOns": [
+    "cloudflare",
+    "tanstack-query",
+    "neon",
+    "better-auth",
+    "biome"
+  ]
+}
