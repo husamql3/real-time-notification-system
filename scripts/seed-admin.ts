@@ -6,10 +6,7 @@
  */
 import { eq } from 'drizzle-orm'
 import { db, schema } from '../src/db/index'
-
-const { hashPassword } = (await import(
-  '../node_modules/better-auth/dist/crypto/index.mjs'
-)) as { hashPassword: (pw: string) => Promise<string> }
+import { hashPassword } from '../src/lib/password'
 
 const email = process.env.ADMIN_EMAIL
 const password = process.env.ADMIN_PASSWORD ?? 'admin1234'

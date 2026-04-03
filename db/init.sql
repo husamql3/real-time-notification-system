@@ -64,7 +64,7 @@ VALUES (
     'admin@example.com',
     'credential',
     'seed-admin-user',
-    '745bd32538cbd5433081c0145d4af4d6:a52bedeaeaf77dc99bee2c8f20a628e30438380889e406babc600986088f69285d180a02fa42740cf76c13b443555f98b6ec920e2440f6a76f0da299783a1b30',
+    'pbkdf2:03d8babf44b511739744290150abcc69:a258d29dac1477b44f818a2cd26e59d9122afdff45fddbb602d49d66222d8759',
     now(),
     now()
 ) ON CONFLICT DO NOTHING;
