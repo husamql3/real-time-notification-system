@@ -31,6 +31,25 @@ src/
 └── worker.ts                      # Cloudflare Worker entry point (handles /api/ws directly)
 ```
 
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in the values:
+
+```sh
+cp .env.example .env
+```
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Neon pooled connection string |
+| `DATABASE_URL_DIRECT` | Neon direct connection string (used by Drizzle migrations) |
+| `BETTER_AUTH_SECRET` | Random secret for Better Auth session signing |
+| `BETTER_AUTH_URL` | Base URL of the app (e.g. `http://localhost:3000` in dev) |
+| `ADMIN_EMAIL` | Email address granted admin access |
+| `ADMIN_PASSWORD` | Password used by `bun db:seed` to create the admin user |
+
+In dev, `bun dev` auto-provisions a Neon database and writes `DATABASE_URL` / `DATABASE_URL_DIRECT` to `.env` automatically via `vite-plugin-neon-new`.
+
 ## Running Locally
 
 **Prerequisites:** [Bun](https://bun.sh), a [Neon](https://neon.tech) database (auto-provisioned in dev)
